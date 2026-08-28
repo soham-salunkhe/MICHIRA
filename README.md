@@ -1,4 +1,4 @@
-# 🧭 YatraAI — AI-Powered Tourist Intelligence Platform
+# 🧭 MICHIRA — AI-Powered Tourist Intelligence Platform
 ### Smart India Hackathon (SIH 2026) | Problem Statement: TUR09 (Lead) + TUR01, TUR02, TUR04, TUR05, TUR08
 
 > **"Turn millions of tourist experiences into your perfect journey."**
@@ -8,7 +8,7 @@
 
 ## 🌟 Executive Overview & Problem Statement Alignment
 
-YatraAI is a full-stack, production-grade tourism intelligence platform that solves **TUR09 (AI-Based Tourist Review Intelligence System)** and seamlessly connects it to:
+MICHIRA is a full-stack, production-grade tourism intelligence platform that solves **TUR09 (AI-Based Tourist Review Intelligence System)** and seamlessly connects it to:
 - **TUR09**: Multilingual Review NLP Pipeline (Language Detection, Sentiment Analysis, 12-Aspect ABSA, Semantic Problem Clustering, Emerging Hidden Gem Detection)
 - **TUR04**: Supervised ML Crowd Forecasting & Density Prediction
 - **TUR01**: Explainable AI Travel Planner with Data-Backed Reasoning
@@ -21,7 +21,7 @@ YatraAI is a full-stack, production-grade tourism intelligence platform that sol
 ## 🏗️ Architecture & Technology Stack
 
 ```
-                                    YATRAAI ARCHITECTURE
+                                    MICHIRA ARCHITECTURE
                                               │
                     ┌─────────────────────────┼─────────────────────────┐
                     │                         │                         │
@@ -39,7 +39,7 @@ YatraAI is a full-stack, production-grade tourism intelligence platform that sol
 ### 1. Frontend (React 19 + TypeScript + Vite + Tailwind CSS + Leaflet)
 - **Destination Dashboard**: Composite Intelligence Score (82/100), Aspect Radar Charts, Sentiment Timeline, Ranked Problem Severity, Emerging Gems Leaderboard, Hourly Crowd Heatmaps, and Interactive Map Layers.
 - **Live Review Hub**: Real-time multilingual review analyzer with instant language identification, sentiment polarity, and aspect extraction.
-- **Explainable Travel Planner**: Tailored day-by-day itineraries with clear **"Why YatraAI recommended this"** justification bullets.
+- **Explainable Travel Planner**: Tailored day-by-day itineraries with clear **"Why MICHIRA recommended this"** justification bullets.
 - **Multilingual Assistant**: Natural language chat interface with quick prompts in Indian languages.
 
 ### 2. Backend (Node.js + Express + TypeScript)
