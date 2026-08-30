@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuthGuard } from '../hooks/useAuthGuard';
+import { useAuth } from '../context/AuthContext';
 import './LandingPage.css';
 
 /**
@@ -53,12 +55,21 @@ const HERO_SLIDES = [
 ];
 
 export const LandingPage = () => {
+  const guard = useAuthGuard();
+  const navigate = useNavigate();
+  const { user, isLoggedIn, logout } = useAuth();
   const [headerScrolled, setHeaderScrolled] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const assistantPanelRef = useRef<HTMLDivElement>(null);
-  const assistantFabRef = useRef<HTMLDivElement>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const activeSlide = HERO_SLIDES[currentImageIndex];
+
+  const displayName  = user?.displayName || null;
+  const displayEmail = user?.email || null;
+  const shortLabel   = displayName
+    ? displayName.split(' ')[0]
+    : displayEmail ? displayEmail.split('@')[0] : '';
+  const avatarLetter = (displayName?.[0] || displayEmail?.[0] || '?').toUpperCase();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -91,14 +102,10 @@ export const LandingPage = () => {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        assistantPanelRef.current && !assistantPanelRef.current.contains(e.target as Node) &&
-        assistantFabRef.current && !assistantFabRef.current.contains(e.target as Node)
-      ) {
-        setAssistantOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
       }
     };
-
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
@@ -125,28 +132,62 @@ export const LandingPage = () => {
             <a href="#diya">Heritage</a>
           </div>
           <div className="nav-right">
-            <div className="icon-btn" aria-label="Search">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="11" cy="11" r="7" />
-                <path d="M21 21l-4.3-4.3" />
-              </svg>
-            </div>
-            <div className="lang-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" />
-              </svg>
-              EN
-            </div>
-            <div className="icon-btn" aria-label="Profile">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6" />
-              </svg>
-            </div>
-            <Link to="/planner">
-              <button className="btn-gold">Plan with AI ✦</button>
-            </Link>
+            {isLoggedIn ? (
+              /* ── Logged in: avatar + dropdown ── */
+              <div className="lp-user-wrap" ref={userMenuRef}>
+                <button
+                  className="lp-user-btn"
+                  onClick={() => setUserMenuOpen(s => !s)}
+                  aria-label="User menu"
+                  aria-expanded={userMenuOpen}
+                  aria-haspopup="true"
+                >
+                  <span className="lp-avatar">{avatarLetter}</span>
+                  <span className="lp-user-label">{shortLabel}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" aria-hidden="true"
+                    style={{ transition: 'transform .2s', transform: userMenuOpen ? 'rotate(180deg)' : 'none' }}>
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+
+                {userMenuOpen && (
+                  <div className="lp-user-dropdown" role="menu">
+                    <div className="lp-user-info">
+                      {displayName  && <span className="lp-user-name">{displayName}</span>}
+                      {displayEmail && <span className="lp-user-email">{displayEmail}</span>}
+                    </div>
+                    <div className="lp-user-divider" />
+                    <button className="lp-user-item" role="menuitem"
+                      onClick={() => { setUserMenuOpen(false); guard('/planner'); }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
+                      </svg>
+                      My Journeys
+                    </button>
+                    <button className="lp-user-item lp-user-signout" role="menuitem"
+                      onClick={async () => { setUserMenuOpen(false); await logout(); navigate('/'); }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                      </svg>
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Logged out: profile icon → /login ── */
+              <div className="icon-btn" aria-label="Sign in"
+                onClick={() => navigate('/login')} style={{ cursor: 'pointer' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6" />
+                </svg>
+              </div>
+            )}
+            <button className="btn-gold" onClick={() => guard('/planner')}>Plan with AI ✦</button>
           </div>
         </nav>
       </header>
@@ -179,14 +220,12 @@ export const LandingPage = () => {
               </h1>
               <p className="sub">Discover journeys shaped by history, culture, people and the stories travelers leave behind.</p>
               <div className="hero-ctas">
-                <Link to="/planner">
-                  <button className="btn-gold">
-                    Plan My Journey
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
-                  </button>
-                </Link>
+                <button className="btn-gold" onClick={() => guard('/planner')}>
+                  Plan My Journey
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </button>
                 <a href="#discovery" className="btn-outline">Explore India</a>
               </div>
             </div>
@@ -208,12 +247,16 @@ export const LandingPage = () => {
                   <span className="hero-info-rating">★ {activeSlide.rating}</span>
                   <span className="hero-info-reviews">{activeSlide.reviews}</span>
                 </div>
-                <Link to={activeSlide.href} className="hero-info-explore">
+                <button
+                  className="hero-info-explore"
+                  onClick={() => guard(activeSlide.href)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit' }}
+                >
                   <span>Explore</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
-                </Link>
+                </button>
               </div>
             </div>
           </div>
@@ -230,7 +273,7 @@ export const LandingPage = () => {
 
           <div className="discovery-wrap">
             <div className="dest-grid reveal-on-scroll">
-              <Link to="/destination/jaipur" className="dcard jaipur">
+              <button onClick={() => guard('/destination/jaipur')} className="dcard jaipur" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', width: '100%' }}>
                 <img src="/img/hawa_mahal.jpg" alt="Jaipur" />
                 <div className="dcard-scrim"></div>
                 <div className="dcard-info">
@@ -242,8 +285,8 @@ export const LandingPage = () => {
                     <span className="dcard-arrow">→</span>
                   </div>
                 </div>
-              </Link>
-              <Link to="/destination/goa" className="dcard goa">
+              </button>
+              <button onClick={() => guard('/destination/goa')} className="dcard goa" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', width: '100%' }}>
                 <img src="/img/goa_beach.jpg" alt="Goa" />
                 <div className="dcard-scrim"></div>
                 <div className="dcard-info">
@@ -255,7 +298,7 @@ export const LandingPage = () => {
                     <span className="dcard-arrow">→</span>
                   </div>
                 </div>
-              </Link>
+              </button>
               <div className="dcard varanasi">
                 <img src="/img/varanasi.jpg" alt="Varanasi" />
                 <div className="dcard-scrim"></div>
@@ -283,12 +326,12 @@ export const LandingPage = () => {
                 </div>
               </div>
             </div>
-            <Link to="/explore" className="view-all reveal-on-scroll">
+            <button onClick={() => guard('/explore')} className="view-all reveal-on-scroll" style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0 }}>
               View all destinations
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
-            </Link>
+            </button>
           </div>
         </div>
       </section>
@@ -390,9 +433,7 @@ export const LandingPage = () => {
                 </svg>
               </div>
 
-              <Link to="/planner">
-                <button className="btn-gold">Create My Journey ✦</button>
-              </Link>
+              <button className="btn-gold" onClick={() => guard('/planner')}>Create My Journey ✦</button>
             </div>
           </div>
         </div>
@@ -606,7 +647,7 @@ export const LandingPage = () => {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '24px', marginTop: '28px' }}>
-                <button className="btn-gold">Explore in AR</button>
+                <button className="btn-gold" onClick={() => guard('/experiences')}>Explore in AR</button>
                 <a href="#" className="btn-outline">
                   Learn the History
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -626,9 +667,7 @@ export const LandingPage = () => {
         <div className="container final-content">
           <h2>Your next story<br />is waiting.</h2>
           <div className="final-ctas">
-            <Link to="/planner">
-              <button className="btn-gold">Plan My Journey</button>
-            </Link>
+            <button className="btn-gold" onClick={() => guard('/planner')}>Plan My Journey</button>
             <a href="#discovery" className="btn-ghost">Explore India</a>
           </div>
         </div>
@@ -676,7 +715,7 @@ export const LandingPage = () => {
             </div>
             <div className="fcol">
               <h5>Explore</h5>
-              <Link to="/explore">Destinations</Link>
+              <button className="fcol-link" onClick={() => guard('/explore')}>Destinations</button>
               <a href="#">Heritage Sites</a>
               <a href="#">Travel Guide</a>
               <a href="#">Hidden Gems</a>
@@ -684,7 +723,7 @@ export const LandingPage = () => {
             </div>
             <div className="fcol">
               <h5>Journeys</h5>
-              <Link to="/planner">AI Planner</Link>
+              <button className="fcol-link" onClick={() => guard('/planner')}>AI Planner</button>
               <a href="#">Itineraries</a>
               <a href="#">Custom Trips</a>
               <a href="#">Group Travel</a>
@@ -699,7 +738,7 @@ export const LandingPage = () => {
             </div>
             <div className="fcol">
               <h5>Insights</h5>
-              <Link to="/reviews">Traveler Reviews</Link>
+              <button className="fcol-link" onClick={() => guard('/reviews')}>Traveler Reviews</button>
               <a href="#">Sentiment Insights</a>
               <a href="#">Travel Trends</a>
               <a href="#">Crowd Insights</a>
@@ -707,9 +746,9 @@ export const LandingPage = () => {
             </div>
             <div className="fcol">
               <h5>Platform</h5>
-              <Link to="/planner">AI Travel Planner</Link>
-              <Link to="/assistant">AI Guide</Link>
-              <Link to="/reviews">Review Intelligence</Link>
+              <button className="fcol-link" onClick={() => guard('/planner')}>AI Travel Planner</button>
+              <button className="fcol-link" onClick={() => guard('/assistant')}>AI Guide</button>
+              <button className="fcol-link" onClick={() => guard('/reviews')}>Review Intelligence</button>
               <a href="#">AR Heritage</a>
               <a href="#">Multilingual Support</a>
             </div>
@@ -735,36 +774,7 @@ export const LandingPage = () => {
         </div>
       </footer>
 
-      {/* FLOATING AI ASSISTANT */}
-      <div
-        ref={assistantPanelRef}
-        className={`assistant-panel ${assistantOpen ? 'open' : ''}`}
-        id="assistantPanel"
-      >
-        <h5>MICHIRA Guide</h5>
-        <p className="greet">"Namaste. What would you like to discover?"</p>
-        <div className="qa">
-          <button>Tell me about this place</button>
-          <button>Best time to visit</button>
-          <button>What do travelers say?</button>
-          <Link to="/planner"><button>Plan my trip</button></Link>
-          <button>Translate this</button>
-        </div>
-        <div className="lang-row">
-          <span>English</span><span>हिन्दी</span><span>मराठी</span><span>தமிழ்</span><span>తెలుగు</span><span>বাংলা</span>
-        </div>
-      </div>
-      <div
-        ref={assistantFabRef}
-        className="assistant-fab"
-        id="assistantFab"
-        aria-label="Open MICHIRA Guide"
-        onClick={() => setAssistantOpen(!assistantOpen)}
-      >
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" fill="#D2A95D" />
-        </svg>
-      </div>
+      {/* FLOATING AI ASSISTANT — removed, replaced by global MichiraGuide */}
     </div>
   );
 };

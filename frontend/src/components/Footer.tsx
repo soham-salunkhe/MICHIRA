@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="mt-16 pt-8 pb-4 border-t border-[#353A39] text-[#A7AAA5] text-xs">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+    <footer className="w-full mt-16 border-t border-[rgba(243,239,230,0.09)] text-[#A7AAA5] text-xs">
+      <div className="pt-8 pb-4 grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="space-y-3">
           {/* Brand Name - NO LOGO */}
           <div className="font-extrabold text-lg text-[#F1F0EB] font-mono tracking-wider">

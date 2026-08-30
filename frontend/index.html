@@ -15,5 +15,13 @@
   <body class="bg-[#111313] text-[#F1F0EB] font-sans antialiased min-h-screen selection:bg-[#B49A68] selection:text-[#111313]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Unlock audio on first user gesture so toast chime plays reliably -->
+    <script>
+      window.__mgPlayChime = function() {
+        var a = new Audio('/src/assets/floraphonic-happy-pop-3-185288.mp3');
+        a.volume = 0.5;
+        a.play().catch(function(){});
+      };
+    </script>
   </body>
 </html>
