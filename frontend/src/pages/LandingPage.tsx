@@ -450,8 +450,8 @@ export const LandingPage = () => {
 
           <div className="intel-stats reveal-on-scroll">
             <div className="intel-card">
-              <div className="intel-num">84%</div>
-              <div className="intel-label">Positive Sentiment</div>
+              <div className="intel-num">LIVE</div>
+              <div className="intel-label">Live Sentiment</div>
               <svg className="ring" viewBox="0 0 64 64">
                 <circle cx="32" cy="32" r="26" fill="none" stroke="#232522" strokeWidth="7" />
                 <circle cx="32" cy="32" r="26" fill="none" stroke="#B99550" strokeWidth="7" strokeDasharray="163.4 194.5"
@@ -459,14 +459,14 @@ export const LandingPage = () => {
               </svg>
             </div>
             <div className="intel-card">
-              <div className="intel-num">4.7</div>
-              <div className="intel-label">Average Experience</div>
+              <div className="intel-num">—</div>
+              <div className="intel-label">Live Rating</div>
               <div className="stars">★★★★★</div>
-              <div style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: '8px' }}>Across all destinations</div>
+              <div style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: '8px' }}>Evidence derived per destination</div>
             </div>
             <div className="intel-card">
-              <div className="intel-num">12,483</div>
-              <div className="intel-label">Reviews Analyzed</div>
+              <div className="intel-num">LIVE</div>
+              <div className="intel-label">Reviews Indexed</div>
               <div className="bars">
                 <div style={{ height: '35%' }}></div>
                 <div style={{ height: '55%' }}></div>
@@ -477,7 +477,7 @@ export const LandingPage = () => {
                 <div style={{ height: '60%' }}></div>
                 <div style={{ height: '95%' }}></div>
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: '8px' }}>In our database</div>
+              <div style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: '8px' }}>Loaded from PostgreSQL</div>
             </div>
           </div>
 

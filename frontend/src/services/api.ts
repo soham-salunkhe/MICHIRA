@@ -73,6 +73,128 @@ export interface EmergingAttraction {
   image_url?: string;
 }
 
+export interface ReviewAspect {
+  id?: string;
+  aspect: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  sentiment_score?: number;
+  confidence?: number;
+  snippet?: string;
+  evidence?: string;
+}
+
+export interface ReviewProblem {
+  problem_name: string;
+  category?: string;
+  aspect?: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  evidence?: string;
+  confidence?: number;
+}
+
+export interface ReviewAnalysis {
+  is_valid_tourist_review: boolean;
+  validation_reason: string | null;
+  original_text: string;
+  cleaned_text: string;
+  detected_language: string;
+  language?: string;
+  language_code: string;
+  language_confidence: number;
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed';
+  sentiment_score: number;
+  confidence: number;
+  aspects: ReviewAspect[];
+  detected_problems: ReviewProblem[];
+  positive_points?: Array<{ point: string; aspect: string; confidence: number }>;
+  themes?: string[];
+  service_quality?: Array<{ aspect: string; sentiment: 'positive' | 'negative' | 'neutral'; confidence: number }>;
+  emerging_attractions?: Array<{ name: string; type: string; signal: string; evidence: string }>;
+  actionable_insight?: string;
+}
+
+export interface AspectDimensionStat {
+  aspect: string;
+  mentions: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  satisfaction_rate: number;
+}
+
+export interface DestinationIntelligenceData {
+  destination: Destination & {
+    total_reviews: number;
+    avg_rating: number | null;
+    positive_pct: number | null;
+    neutral_pct: number | null;
+    negative_pct: number | null;
+  };
+  summary_metrics: {
+    total_reviews_fetched: number;
+    total_reviews_analyzed: number;
+    analysis_errors: number;
+    data_context_label?: string;
+  };
+  sentiment: {
+    total_reviews: number;
+    analyzed_reviews: number;
+    positive: number;
+    neutral: number;
+    negative: number;
+    positive_pct: number | null;
+    neutral_pct: number | null;
+    negative_pct: number | null;
+    average_rating: number | null;
+  };
+  aspects: Array<{
+    aspect: string;
+    mentions: number;
+    positive: number;
+    negative: number;
+    neutral: number;
+    satisfaction_rate: number | null;
+    sufficient_data: boolean;
+  }>;
+  overall_service_score: number | null;
+  recurring_problems: Array<{
+    id: string;
+    name: string;
+    category: string;
+    mention_count: number;
+    mention_pct: string | number | null;
+    severity: string;
+    description?: string;
+    representative_reviews?: string[];
+  }>;
+  service_quality: Array<{
+    id: string;
+    category: string;
+    score: number | string | null;
+    review_count?: number;
+    sufficient_data?: boolean;
+  }>;
+  emerging_attractions: Array<{
+    id: string;
+    attraction_name: string;
+    mention_count: number;
+    mention_growth_pct: number | string | null;
+    growth_rate?: string;
+    reasons?: string[];
+    evidence?: string[];
+    positive_sentiment_pct?: number | string;
+    type?: string;
+  }>;
+  analysis_errors?: Array<{ review_id: string; message: string }>;
+  reviews?: Array<Record<string, unknown>>;
+  ai_brief: {
+    summary: string;
+    recommended_actions?: string[];
+    overall_service_score?: number | null;
+    data_context?: string;
+  };
+}
+
 export interface LocalExperience {
   id: string;
   name: string;
@@ -123,6 +245,34 @@ export const api = {
       body: JSON.stringify(payload)
     });
     return await res.json();
+  },
+
+  async getReviewIntelligence(destinationId?: string): Promise<{ success: boolean; data: DestinationIntelligenceData }> {
+    const url = destinationId ? `${API_BASE_URL}/reviews/intelligence?destination_id=${destinationId}` : `${API_BASE_URL}/reviews/intelligence`;
+    const res = await fetch(url);
+    return await res.json();
+  },
+
+  async translateIntelligence(payload: { target_language: string; destination_name: string; data: any }): Promise<{ success: boolean; data: any }> {
+    const res = await fetch(`${API_BASE_URL}/reviews/translate-intelligence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  },
+
+  async fetchReviews(destinationId: string): Promise<{ success: boolean; cached?: boolean; stale?: boolean; review_count?: number; message?: string; analysis_errors?: number }> {
+    const res = await fetch(`${API_BASE_URL}/reviews/fetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destination_id: destinationId })
+    });
+    return await res.json();
+  },
+
+  async scrapeDestination(destinationId: string) {
+    return this.fetchReviews(destinationId);
   },
 
   // Crowd

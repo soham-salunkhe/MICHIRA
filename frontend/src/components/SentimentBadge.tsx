@@ -31,6 +31,16 @@ export const SentimentBadge: React.FC<SentimentBadgeProps> = ({ sentiment, score
     );
   }
 
+  if (norm === 'mixed') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+        {showIcon && <Minus className="w-3 h-3 rotate-45" />}
+        <span>Mixed</span>
+        {score !== undefined && <span className="text-[10px] text-amber-300 opacity-80">({(score >= 0 ? '+' : '') + score.toFixed(2)})</span>}
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/20">
       {showIcon && <Minus className="w-3 h-3" />}

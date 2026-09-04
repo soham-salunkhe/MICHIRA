@@ -51,6 +51,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+import { seedAllDestinations } from './config/seedDestinations.js';
+
+app.listen(PORT, async () => {
   console.log(`🚀 YatraAI Backend Server running on http://localhost:${PORT}`);
+  try {
+    await seedAllDestinations();
+    console.log('✓ All India destinations dataset synchronized');
+  } catch (err) {
+    console.warn('Destination seed note:', err);
+  }
 });

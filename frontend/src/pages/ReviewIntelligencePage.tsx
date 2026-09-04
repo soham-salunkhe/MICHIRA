@@ -1,303 +1,789 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, MessageSquare, ThumbsUp, ThumbsDown, Filter, Send, Globe, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { api } from '../services/api';
-import { SentimentBadge } from '../components/SentimentBadge';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { api, Destination, DestinationIntelligenceData } from '../services/api';
+import { DestinationPicker } from '../components/DestinationPicker';
 
-export const ReviewIntelligencePage: React.FC = () => {
-  const [inputText, setInputText] = useState('');
-  const [rating, setRating] = useState(4.0);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any | null>(null);
+// ── Types ────────────────────────────────────────────────────────────────────
 
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
-  const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
-  const [loadingReviews, setLoadingReviews] = useState(true);
+interface Review {
+  id: string;
+  original_text: string;
+  translated_text?: string | null;
+  rating: number | string;
+  detected_language: string;
+  sentiment: string;
+  review_date: string;
+  created_at: string;
+  attraction_name?: string | null;
+  destination_name?: string;
+  source?: string;
+  reviewer_name?: string | null;
+  place_name?: string | null;
+  place_address?: string | null;
+  review_url?: string | null;
+  analysis_status?: string;
+  analysis_error?: string | null;
+}
 
-  // Preset demo test reviews in multiple languages
-  const samplePrompts = [
-    {
-      lang: 'Marathi',
-      text: 'इथे खूप गर्दी आहे आणि पार्किंग ची अजिबात सोय नाही. पण समुद्र सुंदर आहे.',
-      rating: 2.5
-    },
-    {
-      lang: 'Hindi',
-      text: 'बागा बीच बहुत सुंदर है और यहाँ का सीफूड खाना बहुत ही लाजवाब है!',
-      rating: 5.0
-    },
-    {
-      lang: 'English',
-      text: 'Finding parking was impossible at Calangute Beach and hawkers were extremely aggressive.',
-      rating: 2.0
-    },
-    {
-      lang: 'Tamil',
-      text: 'பாகா கடற்கரை மிகவும் அழகாக உள்ளது. உணவு சுவையாக இருந்தது ஆனால் கூட்டம் அதிகம்.',
-      rating: 4.0
-    }
-  ];
+interface TranslatedContent {
+  ai_summary?: string;
+  recurring_problems?: Array<{ name: string; description?: string }>;
+  service_quality?: Array<{ category: string }>;
+  emerging_attractions?: Array<{ attraction_name: string; reasons?: string[] }>;
+}
 
-  const fetchRecentReviews = () => {
-    setLoadingReviews(true);
-    api.getReviews({
-      language: selectedLanguage !== 'all' ? selectedLanguage : undefined,
-      sentiment: selectedSentiment !== 'all' ? selectedSentiment : undefined,
-      limit: 25
-    }).then(res => {
-      setReviews(res.data || []);
-      setLoadingReviews(false);
-    }).catch(() => setLoadingReviews(false));
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const SUPPORTED_LANGUAGES = [
+  { code: 'en', label: 'English', native: 'English' },
+  { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
+  { code: 'mr', label: 'Marathi', native: 'मराठी' },
+  { code: 'bn', label: 'Bengali', native: 'বাংলা' },
+  { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
+  { code: 'te', label: 'Telugu', native: 'తెలుగు' },
+  { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
+  { code: 'ml', label: 'Malayalam', native: 'മലയാളം' },
+  { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી' },
+  { code: 'pa', label: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+  { code: 'or', label: 'Odia', native: 'ଓଡ଼ିଆ' },
+  { code: 'as', label: 'Assamese', native: 'অসমীয়া' },
+  { code: 'ur', label: 'Urdu', native: 'اردو' },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function StarRating({ rating }: { rating: number | string }) {
+  const r = typeof rating === 'string' ? parseFloat(rating) : rating;
+  const full = Math.floor(r);
+  const half = r - full >= 0.5;
+  return (
+    <span className="text-[#D2A95D] text-sm tracking-tight select-none" aria-label={`${r} stars`}>
+      {Array.from({ length: 5 }, (_, i) => {
+        if (i < full) return '★';
+        if (i === full && half) return '½';
+        return '☆';
+      }).join('')}
+    </span>
+  );
+}
+
+function formatRelativeDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = Date.now();
+  const diff = now - date.getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days < 1) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return '1 week ago';
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 60) return '1 month ago';
+  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  return `${Math.floor(days / 365)} years ago`;
+}
+
+function langFlag(code: string): string {
+  const flags: Record<string, string> = {
+    en: '🇬🇧', hi: '🇮🇳', mr: '🇮🇳', bn: '🇮🇳', ta: '🇮🇳',
+    te: '🇮🇳', kn: '🇮🇳', ml: '🇮🇳', gu: '🇮🇳', pa: '🇮🇳',
+    or: '🇮🇳', as: '🇮🇳', ur: '🇮🇳',
   };
+  return flags[code] || '🌐';
+}
 
-  useEffect(() => {
-    fetchRecentReviews();
-  }, [selectedLanguage, selectedSentiment]);
-
-  const handleAnalyze = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    setAnalyzing(true);
-    try {
-      const res = await api.analyzeReview({
-        text: inputText,
-        rating: rating,
-        destination_id: 'd1000000-0000-0000-0000-000000000001', // Goa default
-        reviewer_name: 'Live Hackathon Judge'
-      });
-
-      if (res.success && res.data) {
-        setAnalysisResult(res.data.analysis);
-        fetchRecentReviews(); // Refresh review list
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAnalyzing(false);
-    }
+function langName(code: string): string {
+  const names: Record<string, string> = {
+    en: 'English', hi: 'Hindi', mr: 'Marathi', bn: 'Bengali',
+    ta: 'Tamil', te: 'Telugu', kn: 'Kannada', ml: 'Malayalam',
+    gu: 'Gujarati', pa: 'Punjabi', or: 'Odia', as: 'Assamese', ur: 'Urdu',
   };
+  return names[code] || code.toUpperCase();
+}
+
+function normalizeScore(score: number | string | null): number | null {
+  if (score === null || score === undefined || score === '') return null;
+  const n = typeof score === 'string' ? parseFloat(score) : score;
+  if (!Number.isFinite(n)) return null;
+  return n <= 5 ? Math.round(n * 20) : Math.round(n);
+}
+
+function normalizePct(pct: number | string | null): number {
+  if (pct === null || pct === undefined || pct === '') return 0;
+  const n = typeof pct === 'string' ? parseFloat(pct) : pct;
+  if (!Number.isFinite(n)) return 0;
+  // If stored as decimal fraction (0.32) vs percentage (32)
+  return n > 0 && n < 1 ? Math.round(n * 100) : Math.round(n);
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+function Divider() {
+  return <div className="border-t border-[#1E2120] my-12" />;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-[#6A6860] mb-2 font-sans">
+      {children}
+    </p>
+  );
+}
+
+function LoadingSteps({ destName, phase }: { destName: string; phase: 'fetching' | 'analyzing' }) {
+  const fetching = phase === 'fetching';
+  return (
+    <div className="py-20 text-center" aria-live="polite">
+      <h2 className="text-2xl font-serif text-[#F3EFE6] mb-1">{destName}</h2>
+      <p className="text-sm text-[#8A8880] mb-8 font-light">
+        {fetching ? 'Gathering recent reviews from Google Maps...' : 'MICHIRA is extracting multilingual tourism insights...'}
+      </p>
+      <div className="space-y-2 text-sm font-light">
+        <p className={fetching ? 'text-[#B99550]' : 'text-[#6A6860]'}>· Fetching tourist reviews</p>
+        <p className={!fetching ? 'text-[#B99550]' : 'text-[#6A6860]'}>· Analyzing review evidence</p>
+        <p className="text-[#6A6860]">· Calculating destination intelligence</p>
+      </div>
+    </div>
+  );
+}
+
+function ReviewCard({
+  review,
+  showTranslation,
+  onToggleTranslation,
+}: {
+  review: Review;
+  showTranslation: boolean;
+  onToggleTranslation: () => void;
+}) {
+  const rating = typeof review.rating === 'string' ? parseFloat(review.rating) : review.rating;
+  const hasTranslation = review.detected_language !== 'en' && review.translated_text;
+  const displayDate = review.review_date || review.created_at;
 
   return (
-    <div className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Header */}
-      <div className="mb-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yatra-900/80 border border-yatra-700/50 text-xs font-semibold text-yatra-300 mb-3">
-          <Globe className="w-3.5 h-3.5" />
-          <span>TUR09 Core Intelligence Pipeline</span>
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          Multilingual Review Intelligence & Aspect Extraction
-        </h1>
-        <p className="mt-2 text-slate-400 text-sm max-w-3xl">
-          Ingests tourist reviews across Indian languages (English, Hindi, Marathi, Tamil, Telugu), performs sentiment analysis, extracts 12 aspect dimensions, and clusters recurring complaints in real time.
-        </p>
+    <article className="pt-6 first:pt-0">
+      <div className="flex items-start justify-between gap-4 mb-2">
+        <StarRating rating={rating || 0} />
+        <span className="text-[11px] text-[#6A6860] font-mono shrink-0 mt-0.5">
+          {formatRelativeDate(displayDate)}
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* LEFT COLUMN: LIVE REVIEW INGESTION & NLP TESTER (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="p-6 rounded-2xl glass-card border border-yatra-500/30">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
-              <Sparkles className="w-4 h-4 text-yatra-400" />
-              Live NLP Pipeline Ingestion
-            </h2>
+      <p className="text-[#D6D3CB] text-sm font-light leading-relaxed mb-2">
+        &ldquo;{review.original_text}&rdquo;
+      </p>
 
-            {/* Quick Sample Prompts */}
-            <div className="mb-4">
-              <p className="text-xs font-semibold text-slate-400 mb-2">Try Sample Reviews:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {samplePrompts.map((s, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      setInputText(s.text);
-                      setRating(s.rating);
-                    }}
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-yatra-500 transition-colors"
-                  >
-                    {s.lang}
-                  </button>
-                ))}
-              </div>
-            </div>
+      {hasTranslation && showTranslation && (
+        <p className="text-[#8A8880] text-xs font-light italic border-l border-[#2A2C2B] pl-3 mb-2 leading-relaxed">
+          {review.translated_text}
+        </p>
+      )}
 
-            <form onSubmit={handleAnalyze} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Tourist Review Text (Any Indian language)
-                </label>
-                <textarea
-                  rows={4}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Paste or type a tourist review in English, हिन्दी, मराठी, தமிழ், or తెలుగు..."
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yatra-500 transition-colors"
-                  required
-                />
-              </div>
+      {review.analysis_status === 'error' && (
+        <p className="text-[11px] text-[#9A6A55] mb-2">
+          Review indexed; analysis unavailable right now.
+        </p>
+      )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  User Rating: {rating} ★
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="5"
-                  step="0.5"
-                  value={rating}
-                  onChange={(e) => setRating(parseFloat(e.target.value))}
-                  className="w-full accent-yatra-500"
-                />
-              </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px] text-[#6A6860]">
+          {review.attraction_name && (
+            <span className="font-medium text-[#9E9C94]">{review.attraction_name}</span>
+          )}
+          {review.attraction_name && <span>·</span>}
+          <span>{langFlag(review.detected_language)} {langName(review.detected_language)}</span>
+        </div>
+        {hasTranslation && (
+          <button
+            onClick={onToggleTranslation}
+            className="text-[10px] text-[#6A6860] hover:text-[#B99550] transition-colors font-sans tracking-wide"
+          >
+            {showTranslation ? 'Hide translation' : 'View translation'}
+          </button>
+        )}
+      </div>
 
-              <button
-                type="submit"
-                disabled={analyzing || !inputText.trim()}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-yatra-600 to-indigo-600 hover:from-yatra-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-yatra-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {analyzing ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>Processing NLP Pipeline...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>Run TUR09 Intelligence Pipeline</span>
-                  </>
-                )}
-              </button>
-            </form>
+      <div className="border-t border-[#181A19] mt-5" />
+    </article>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
+type LoadingState = 'idle' | 'loading' | 'error' | 'no-data';
+type LoadingPhase = 'fetching' | 'analyzing';
+
+export const ReviewIntelligencePage: React.FC = () => {
+  // ── State ──────────────────────────────────────────────────────────────
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
+  const [intelligence, setIntelligence] = useState<DestinationIntelligenceData | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loadingState, setLoadingState] = useState<LoadingState>('idle');
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>('fetching');
+  const [loadMessage, setLoadMessage] = useState<string | null>(null);
+
+  // Review panel state
+  const [showAllReviews, setShowAllReviews] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null); // category filter for "view related reviews"
+  const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
+
+  // Multilingual
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [translating, setTranslating] = useState(false);
+  const [translatedData, setTranslatedData] = useState<Record<string, TranslatedContent>>({});
+
+  const retryLoad = useCallback(() => {
+    if (selectedDestination) {
+      // Create a new value so the destination-loading effect runs again.
+      setSelectedDestination({ ...selectedDestination });
+    }
+  }, [selectedDestination]);
+
+  // ── Load destinations ─────────────────────────────────────────────────
+  useEffect(() => {
+    api.getDestinations().then((dests) => {
+      if (dests && dests.length > 0) {
+        setDestinations(dests);
+        const defaultDest = dests.find((d) => d.slug === 'goa') || dests[0];
+        setSelectedDestination(defaultDest);
+      }
+    }).catch(console.error);
+  }, []);
+
+  // ── Load data when destination changes ────────────────────────────────
+  useEffect(() => {
+    if (!selectedDestination) return;
+    let active = true;
+    const destId = selectedDestination.id;
+
+    setIntelligence(null);
+    setReviews([]);
+    setActiveFilter(null);
+    setShowAllReviews(false);
+    setSelectedLanguage('en');
+    setTranslatedData({});
+    setExpandedTranslations(new Set());
+    setLoadMessage(null);
+    setLoadingState('loading');
+    setLoadingPhase('fetching');
+
+    (async () => {
+      try {
+        const fetchResult = await api.fetchReviews(destId);
+        if (!active) return;
+        setLoadMessage(fetchResult.message || null);
+        // Only bail out if fetch failed AND there's explicitly no cached data
+        // (apify_unavailable still sets cached:true so we proceed)
+        if (!fetchResult.success && !fetchResult.cached && fetchResult.review_count === 0) {
+          setLoadingState('error');
+          return;
+        }
+
+        setLoadingPhase('analyzing');
+        const [intelligenceRes, reviewsRes] = await Promise.all([
+          api.getReviewIntelligence(destId),
+          api.getReviews({ destination_id: destId, limit: 30 }),
+        ]);
+        if (!active) return;
+
+        const hasIntelligence = intelligenceRes?.success && intelligenceRes?.data;
+        const validReviews = ((reviewsRes?.data || []) as Review[]).filter(
+          (review) => review.original_text && review.original_text.trim().length >= 10
+        );
+        const fetchedCount = intelligenceRes?.data?.summary_metrics?.total_reviews_fetched || 0;
+
+        if (!hasIntelligence || fetchedCount === 0) {
+          setLoadingState('no-data');
+          return;
+        }
+
+        setIntelligence(intelligenceRes.data);
+        setReviews(validReviews);
+        setLoadingState('idle');
+      } catch (err) {
+        if (!active) return;
+        console.error('Failed to load review intelligence:', err);
+        setLoadingState('error');
+      }
+    })();
+
+    return () => { active = false; };
+  }, [selectedDestination]);
+
+  // ── Handle language translation ───────────────────────────────────────
+  const handleLanguageChange = useCallback(async (langCode: string) => {
+    setSelectedLanguage(langCode);
+    if (langCode === 'en' || !intelligence) return;
+    if (translatedData[langCode]) return; // already cached
+
+    const targetLang = SUPPORTED_LANGUAGES.find((l) => l.code === langCode);
+    if (!targetLang) return;
+
+    setTranslating(true);
+    try {
+      const res = await api.translateIntelligence({
+        target_language: targetLang.label,
+        destination_name: selectedDestination?.name || '',
+        data: {
+          ai_summary: intelligence.ai_brief?.summary || '',
+          recurring_problems: intelligence.recurring_problems || [],
+          service_quality: intelligence.service_quality || [],
+          emerging_attractions: intelligence.emerging_attractions || [],
+        },
+      });
+      if (res.success && res.data) {
+        setTranslatedData((prev) => ({ ...prev, [langCode]: res.data }));
+      }
+    } catch (err) {
+      console.error('Translation error:', err);
+    } finally {
+      setTranslating(false);
+    }
+  }, [intelligence, selectedDestination, translatedData]);
+
+  // ── Derived data ──────────────────────────────────────────────────────
+  const translation = selectedLanguage !== 'en' ? translatedData[selectedLanguage] : null;
+
+  const recurringProblems = useMemo(() => {
+    if (!intelligence?.recurring_problems) return [];
+    return intelligence.recurring_problems.slice(0, 5).map((p, i) => ({
+      ...p,
+      displayName: translation?.recurring_problems?.[i]?.name || p.name,
+      displayDesc: translation?.recurring_problems?.[i]?.description || p.description,
+      pct: normalizePct(p.mention_pct),
+    }));
+  }, [intelligence, translation]);
+
+  const serviceQualityItems = useMemo(() => {
+    if (!intelligence?.service_quality) return [];
+    return intelligence.service_quality.slice(0, 6)
+      .map((s, i) => ({
+        ...s,
+        displayCategory: translation?.service_quality?.[i]?.category || s.category,
+        normalizedScore: normalizeScore(s.score),
+      }))
+      .filter((s) => s.normalizedScore !== null);
+  }, [intelligence, translation]);
+
+  const overallScore = intelligence?.overall_service_score ?? (serviceQualityItems.length
+    ? Math.round(serviceQualityItems.reduce((a, s) => a + (s.normalizedScore || 0), 0) / serviceQualityItems.length)
+    : null);
+
+  const emergingAttractions = useMemo(() => {
+    if (!intelligence?.emerging_attractions) return [];
+    return intelligence.emerging_attractions.slice(0, 5).map((ea, i) => ({
+      ...ea,
+      displayReasons: translation?.emerging_attractions?.[i]?.reasons || ea.reasons || [],
+      growthLabel: ea.growth_rate || (ea.mention_growth_pct !== null && ea.mention_growth_pct !== undefined
+        ? `+${Math.round(normalizePct(ea.mention_growth_pct))}% mentions`
+        : 'Emerging signal'),
+    }));
+  }, [intelligence, translation]);
+
+  const aiSummary = translation?.ai_summary || intelligence?.ai_brief?.summary || '';
+
+  // Filtered reviews (by problem category or show all)
+  const filteredReviews = useMemo(() => {
+    if (!activeFilter) return reviews;
+    return reviews.filter((r) => {
+      const text = (r.original_text + ' ' + (r.translated_text || '')).toLowerCase();
+      return text.includes(activeFilter.toLowerCase());
+    });
+  }, [reviews, activeFilter]);
+
+  const visibleReviews = showAllReviews ? filteredReviews : filteredReviews.slice(0, 5);
+
+  const reviewCount = intelligence?.summary_metrics?.total_reviews_fetched
+    ?? intelligence?.destination?.total_reviews
+    ?? reviews.length;
+
+  // ── Render ────────────────────────────────────────────────────────────
+  return (
+    <div
+      className="min-h-screen bg-[#0B0D0D] text-[#F3EFE6] antialiased"
+      style={{ fontFamily: "'Inter', sans-serif" }}
+    >
+      {/* ═══════════════════════════════════════════════════════
+          HEADER
+      ═══════════════════════════════════════════════════════ */}
+      <header className="pt-24 pb-10 px-6 sm:px-12 max-w-3xl mx-auto">
+        <SectionLabel>Tourist Intelligence</SectionLabel>
+
+        <h1
+          className="text-4xl sm:text-5xl text-[#F3EFE6] leading-tight mb-4"
+          style={{ fontFamily: "'Cormorant Garamond', 'Playfair Display', Georgia, serif", fontWeight: 500 }}
+        >
+          Multilingual Review Intelligence
+        </h1>
+
+        <p className="text-[#7A7870] text-base font-light leading-relaxed mb-8 max-w-xl">
+          Understand what travelers love, what frustrates them,
+          and what is emerging across India.
+        </p>
+
+        {/* Destination Selector */}
+        <div>
+          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-[#6A6860] mb-2">
+            Destination
+          </p>
+          <DestinationPicker
+            destinations={destinations}
+            selectedDestination={selectedDestination}
+            onSelect={(dest) => setSelectedDestination(dest)}
+          />
+        </div>
+      </header>
+
+      <Divider />
+
+      {/* ═══════════════════════════════════════════════════════
+          CONTENT — switches between states
+      ═══════════════════════════════════════════════════════ */}
+      <main className="px-6 sm:px-12 max-w-3xl mx-auto pb-24">
+
+        {/* LOADING */}
+        {loadingState === 'loading' && (
+          <LoadingSteps destName={selectedDestination?.name || 'Loading...'} phase={loadingPhase} />
+        )}
+
+        {/* ERROR */}
+        {loadingState === 'error' && (
+          <div className="py-20 text-center">
+            <p className="text-[#8A8880] text-sm mb-4">
+              Unable to retrieve review intelligence right now.
+            </p>
+            <button
+              onClick={retryLoad}
+              className="text-xs text-[#B99550] border border-[#B99550]/30 px-4 py-2 hover:border-[#B99550] transition-colors"
+            >
+              Try again
+            </button>
           </div>
+        )}
 
-          {/* LIVE ANALYSIS OUTPUT BREAKDOWN */}
-          {analysisResult && (
-            <div className="p-6 rounded-2xl glass-card border border-emerald-500/40 bg-emerald-950/10 space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  NLP Pipeline Result
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-yatra-900/90 text-yatra-300 border border-yatra-600/40">
-                    Lang: {analysisResult.detected_language.toUpperCase()} ({Math.round(analysisResult.language_confidence * 100)}%)
-                  </span>
-                  <SentimentBadge sentiment={analysisResult.sentiment} score={analysisResult.sentiment_score} />
-                </div>
-              </div>
+        {/* NO DATA */}
+        {loadingState === 'no-data' && (
+          <div className="py-20">
+            <h2
+              className="text-2xl text-[#F3EFE6] mb-2"
+              style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 500 }}
+            >
+              {selectedDestination?.name}
+            </h2>
+            <p className="text-[#6A6860] text-sm font-light">
+              No reviews fetched yet. Retry to request live Google Maps review data.
+            </p>
+            {loadMessage && (
+              <p className="text-[#8A8880] text-xs font-light mt-3 max-w-lg">
+                {loadMessage}
+              </p>
+            )}
+            <button
+              onClick={retryLoad}
+              className="mt-6 text-xs text-[#B99550] border border-[#B99550]/30 px-4 py-2 hover:border-[#B99550] transition-colors"
+            >
+              Retry fetching reviews
+            </button>
+          </div>
+        )}
 
-              {/* Aspects Extracted */}
-              <div>
-                <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Aspect-Based Sentiment (ABSA):</p>
-                {analysisResult.aspects && analysisResult.aspects.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {analysisResult.aspects.map((asp: any, idx: number) => (
-                      <div key={idx} className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
-                        <span className="font-semibold text-white capitalize">{asp.aspect}</span>
-                        <SentimentBadge sentiment={asp.sentiment} showIcon={false} />
+        {/* INTELLIGENCE — shown when loaded */}
+        {loadingState === 'idle' && (intelligence || reviews.length > 0) && (
+          <>
+            {/* ─── DESTINATION CONTEXT ─────────────────────────── */}
+            <section className="mb-12">
+              <h2
+                className="text-3xl sm:text-4xl text-[#F3EFE6] mb-1"
+                style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 500 }}
+              >
+                {selectedDestination?.name}
+              </h2>
+              <p className="text-[#6A6860] text-xs font-light tracking-wide">
+                Review intelligence
+                {reviewCount > 0 && (
+                  <> &nbsp;·&nbsp; Based on {reviewCount} fetched tourist reviews</>
+                )}
+                {loadMessage && (
+                  <span className="block mt-2 text-[#8A8880]">{loadMessage}</span>
+                )}
+              </p>
+            </section>
+
+            <Divider />
+
+            {/* ─── RECURRING PROBLEMS ──────────────────────────── */}
+            {recurringProblems.length > 0 && (
+              <>
+                <section className="mb-12">
+                  <SectionLabel>Recurring Problems</SectionLabel>
+                  <h3
+                    className="text-xl text-[#F3EFE6] mb-2"
+                    style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 500 }}
+                  >
+                    The issues tourists mention most often.
+                  </h3>
+
+                  <div className="mt-8 space-y-5">
+                    {recurringProblems.map((p, i) => (
+                      <div key={p.id || i} className="group">
+                        <div className="flex items-baseline justify-between mb-1.5">
+                          <div className="flex items-baseline gap-3">
+                            <span className="text-[11px] font-mono text-[#4A4C4B] w-5 shrink-0">
+                              0{i + 1}
+                            </span>
+                            <span className="text-sm text-[#D6D3CB] font-light">{p.displayName}</span>
+                          </div>
+                          <span className="text-xs font-mono text-[#7A7870] shrink-0 ml-4">{p.pct}%</span>
+                        </div>
+                        {/* Thin 1px bar */}
+                        <div className="ml-8 h-[1px] w-full bg-[#1E2120]">
+                          <div
+                            className="h-full bg-[#7A3535]"
+                            style={{ width: `${Math.min(100, Math.max(4, p.pct))}%` }}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">No specific aspect keyword triggers</p>
-                )}
-              </div>
 
-              {/* Detected Problems */}
-              {analysisResult.detected_problems && analysisResult.detected_problems.length > 0 && (
-                <div className="pt-3 border-t border-slate-800">
-                  <p className="text-xs font-bold text-rose-400 uppercase tracking-wider mb-2">Clustered Problem:</p>
-                  {analysisResult.detected_problems.map((p: any, idx: number) => (
-                    <div key={idx} className="p-2.5 rounded-lg bg-rose-950/20 border border-rose-800/40 text-xs text-rose-300 flex items-center justify-between">
-                      <span className="font-bold">{p.problem_name}</span>
-                      <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-900/60">{p.severity}</span>
+                  {reviews.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setActiveFilter(activeFilter ? null : 'problem');
+                        setShowAllReviews(true);
+                        setTimeout(() => {
+                          document.getElementById('tourist-voices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                      }}
+                      className="mt-6 text-xs text-[#7A7870] hover:text-[#B99550] transition-colors font-light"
+                    >
+                      View the reviews behind these findings →
+                    </button>
+                  )}
+                </section>
+
+                <Divider />
+              </>
+            )}
+
+            {/* ─── SERVICE QUALITY ─────────────────────────────── */}
+            {serviceQualityItems.length > 0 && (
+              <>
+                <section className="mb-12">
+                  <SectionLabel>Service Quality</SectionLabel>
+
+                  {overallScore !== null && (
+                    <div className="mb-8">
+                      <p className="text-[#6A6860] text-xs font-light mb-0.5">Overall</p>
+                      <p
+                        className="text-5xl text-[#F3EFE6] leading-none"
+                        style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 400 }}
+                      >
+                        {overallScore}
+                        <span className="text-lg text-[#4A4C4B] ml-1">/ 100</span>
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                  )}
 
-        {/* RIGHT COLUMN: REVIEWS FEED WITH MULTILINGUAL FILTER (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="p-6 rounded-2xl glass-card">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <div>
-                <h3 className="text-lg font-bold text-white">Indexed Tourist Reviews Feed</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Real reviews processed with language detection & sentiment tags</p>
-              </div>
-
-              {/* Filters */}
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
-                >
-                  <option value="all">All Languages</option>
-                  <option value="en">English</option>
-                  <option value="hi">Hindi (हिन्दी)</option>
-                  <option value="mr">Marathi (मराठी)</option>
-                  <option value="ta">Tamil (தமிழ்)</option>
-                  <option value="te">Telugu (తెలుగు)</option>
-                </select>
-
-                <select
-                  value={selectedSentiment}
-                  onChange={(e) => setSelectedSentiment(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
-                >
-                  <option value="all">All Sentiment</option>
-                  <option value="positive">Positive</option>
-                  <option value="neutral">Neutral</option>
-                  <option value="negative">Negative</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Review Cards List */}
-            {loadingReviews ? (
-              <div className="py-12 text-center text-xs text-slate-400">Loading reviews...</div>
-            ) : reviews.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-400">No reviews found matching the filters.</div>
-            ) : (
-              <div className="space-y-4 max-h-[650px] overflow-y-auto pr-2">
-                {reviews.map((r) => (
-                  <div key={r.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 hover:border-slate-700 transition-colors space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-xs">{r.reviewer_name || 'Traveler'}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {r.attraction_name ? `• ${r.attraction_name}` : `• ${r.destination_name || 'General'}`}
-                        </span>
+                  <div className="space-y-4">
+                    {serviceQualityItems.map((s, i) => (
+                      <div key={s.id || i} className="flex items-center justify-between gap-6">
+                        <span className="text-sm text-[#9E9C94] font-light shrink-0 min-w-0">{s.displayCategory}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          {/* Thin score bar */}
+                          <div className="w-20 h-[1px] bg-[#1E2120]">
+                            <div
+                              className="h-full bg-[#6A7856]"
+                              style={{ width: `${s.normalizedScore}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-mono text-[#7A7870] w-6 text-right">{s.normalizedScore}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                          {r.detected_language}
-                        </span>
-                        <SentimentBadge sentiment={r.sentiment} score={parseFloat(r.sentiment_score)} />
-                      </div>
-                    </div>
+                    ))}
+                  </div>
 
-                    <p className="text-xs text-slate-200 leading-relaxed font-sans">
-                      {r.original_text}
+                  {reviews.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setShowAllReviews(true);
+                        setTimeout(() => {
+                          document.getElementById('tourist-voices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                      }}
+                      className="mt-6 text-xs text-[#7A7870] hover:text-[#B99550] transition-colors font-light"
+                    >
+                      View supporting reviews →
+                    </button>
+                  )}
+                </section>
+
+                <Divider />
+              </>
+            )}
+
+            {/* ─── EMERGING ATTRACTIONS ────────────────────────── */}
+            {emergingAttractions.length > 0 && (
+              <>
+                <section className="mb-12">
+                  <SectionLabel>Emerging Attractions</SectionLabel>
+                  <h3
+                    className="text-xl text-[#F3EFE6] mb-2"
+                    style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 500 }}
+                  >
+                    Places gaining attention in recent reviews.
+                  </h3>
+
+                  <div className="mt-8 space-y-4">
+                    {emergingAttractions.map((ea, i) => (
+                      <div key={ea.id || i} className="flex items-baseline justify-between gap-4">
+                        <div className="flex items-baseline gap-3 min-w-0">
+                          <span className="text-[11px] font-mono text-[#4A4C4B] w-5 shrink-0">
+                            0{i + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="text-sm text-[#D6D3CB] font-light">{ea.attraction_name}</span>
+                            {ea.displayReasons?.[0] && (
+                              <p className="text-[11px] text-[#5A5C5B] font-light mt-0.5 truncate">
+                                {ea.displayReasons[0]}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs font-mono text-[#4A7856] shrink-0">{ea.growthLabel}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {reviews.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setShowAllReviews(true);
+                        setTimeout(() => {
+                          document.getElementById('tourist-voices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                      }}
+                      className="mt-6 text-xs text-[#7A7870] hover:text-[#B99550] transition-colors font-light"
+                    >
+                      View mentions →
+                    </button>
+                  )}
+                </section>
+
+                <Divider />
+              </>
+            )}
+
+            {/* ─── AI INSIGHT ──────────────────────────────────── */}
+            {aiSummary && (
+              <>
+                <section className="mb-12">
+                  <SectionLabel>AI Insight</SectionLabel>
+
+                  {translating ? (
+                    <p className="text-[#6A6860] text-sm font-light italic">Translating...</p>
+                  ) : (
+                    <p
+                      className="text-[#C8C5BC] text-lg font-light leading-relaxed italic"
+                      style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 400 }}
+                    >
+                      &ldquo;{aiSummary}&rdquo;
                     </p>
+                  )}
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-800/60">
-                      <span>Rating: {r.rating}★</span>
-                      <span>{new Date(r.review_date || r.created_at).toLocaleDateString()}</span>
+                  {/* Language Selector */}
+                  <div className="mt-6 flex items-center gap-2">
+                    <span className="text-xs text-[#6A6860] font-light">Insights in:</span>
+                    <div className="relative inline-block">
+                      <select
+                        value={selectedLanguage}
+                        onChange={(e) => handleLanguageChange(e.target.value)}
+                        disabled={translating}
+                        className="appearance-none bg-transparent border-b border-[#3A3C3B] text-xs text-[#B99550] pb-0.5 pr-4 focus:outline-none cursor-pointer hover:border-[#B99550] transition-colors disabled:opacity-40"
+                        style={{ fontFamily: 'Inter, sans-serif' }}
+                      >
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <option
+                            key={lang.code}
+                            value={lang.code}
+                            className="bg-[#0B0D0D] text-[#F3EFE6]"
+                          >
+                            {lang.native} ({lang.label})
+                          </option>
+                        ))}
+                      </select>
+                      <span className="absolute right-0 top-0 text-[#6A6860] pointer-events-none text-xs">▾</span>
                     </div>
                   </div>
-                ))}
-              </div>
+                </section>
+
+                <Divider />
+              </>
             )}
-          </div>
-        </div>
-      </div>
+
+            {/* ─── TOURIST VOICES ──────────────────────────────── */}
+            {reviews.length > 0 && (
+              <section id="tourist-voices" className="mb-12">
+                <SectionLabel>Tourist Voices</SectionLabel>
+                <h3
+                  className="text-xl text-[#F3EFE6] mb-2"
+                  style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 500 }}
+                >
+                  What travelers actually said.
+                </h3>
+
+                {/* Active filter notice */}
+                {activeFilter && (
+                  <div className="mt-4 mb-6 flex items-center gap-2">
+                    <span className="text-xs text-[#6A6860] font-light">
+                      Filtered: showing reviews related to &ldquo;{activeFilter}&rdquo;
+                    </span>
+                    <button
+                      onClick={() => setActiveFilter(null)}
+                      className="text-xs text-[#7A3535] hover:text-[#E07070] transition-colors ml-1"
+                    >
+                      Clear filter
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-6">
+                  {visibleReviews.length === 0 ? (
+                    <p className="text-[#6A6860] text-sm font-light">
+                      No reviews match this filter.
+                    </p>
+                  ) : (
+                    visibleReviews.map((review) => (
+                      <ReviewCard
+                        key={review.id}
+                        review={review}
+                        showTranslation={expandedTranslations.has(review.id)}
+                        onToggleTranslation={() => {
+                          setExpandedTranslations((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(review.id)) next.delete(review.id);
+                            else next.add(review.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    ))
+                  )}
+                </div>
+
+                {!showAllReviews && filteredReviews.length > 5 && (
+                  <button
+                    onClick={() => setShowAllReviews(true)}
+                    className="mt-4 text-xs text-[#7A7870] hover:text-[#B99550] transition-colors font-light"
+                  >
+                    View all {filteredReviews.length} reviews →
+                  </button>
+                )}
+              </section>
+            )}
+          </>
+        )}
+      </main>
     </div>
   );
 };

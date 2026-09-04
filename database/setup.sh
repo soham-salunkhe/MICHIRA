@@ -1,48 +1,40 @@
-#!/bin/bash
-# YatraAI Database Setup Script
+#!/usr/bin/env bash
+# MICHIRA database bootstrap for live, evidence-backed review intelligence.
 
-set -e
+set -euo pipefail
 
-DB_NAME="yatraai"
+DB_NAME="${DB_NAME:-yatraai}"
 DB_USER="${DB_USER:-kanra}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "🗄️  YatraAI Database Setup"
-echo "========================="
+printf '%s\n' 'MICHIRA PostgreSQL setup' '========================'
 
-# Check if database exists
 if psql -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-    echo "⚠️  Database '$DB_NAME' already exists. Dropping and recreating..."
-    psql -U "$DB_USER" -d postgres -c "DROP DATABASE $DB_NAME;"
+  echo "Database '$DB_NAME' already exists. Dropping and recreating..."
+  psql -U "$DB_USER" -d postgres -c "DROP DATABASE $DB_NAME;"
 fi
 
-echo "📦 Creating database '$DB_NAME'..."
 psql -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;"
+psql -U "$DB_USER" -d "$DB_NAME" -f "$SCRIPT_DIR/migrations/001_schema.sql"
+psql -U "$DB_USER" -d "$DB_NAME" -f "$SCRIPT_DIR/migrations/002_dynamic_review_intelligence.sql"
 
-echo "📋 Running schema migration..."
-psql -U "$DB_USER" -d "$DB_NAME" -f "$(dirname "$0")/migrations/001_schema.sql"
+cat <<'EOF'
 
-echo "🌱 Seeding data..."
-psql -U "$DB_USER" -d "$DB_NAME" -f "$(dirname "$0")/seed/seed_data.sql"
+Schema installed without demo review/intelligence rows.
+The backend seeds only the static India-wide destination selector. Review data is
+created by the server-side Apify -> PostgreSQL -> Gemini pipeline.
 
-echo ""
-echo "✅ Database setup complete!"
-echo ""
+Required backend environment variables for live fetching:
+  APIFY_API_TOKEN
+  GEMINI_API_KEY
+EOF
 
-# Verify
-echo "📊 Verification:"
 psql -U "$DB_USER" -d "$DB_NAME" -c "
-SELECT 'destinations' as table_name, count(*) as rows FROM destinations
-UNION ALL SELECT 'attractions', count(*) FROM attractions
+SELECT 'destinations' AS table_name, count(*) AS rows FROM destinations
 UNION ALL SELECT 'reviews', count(*) FROM reviews
-UNION ALL SELECT 'review_aspects', count(*) FROM review_aspects
+UNION ALL SELECT 'review_analysis', count(*) FROM review_analysis
 UNION ALL SELECT 'problem_clusters', count(*) FROM problem_clusters
 UNION ALL SELECT 'service_quality', count(*) FROM service_quality
 UNION ALL SELECT 'emerging_attractions', count(*) FROM emerging_attractions
-UNION ALL SELECT 'crowd_historical', count(*) FROM crowd_historical
-UNION ALL SELECT 'crowd_predictions', count(*) FROM crowd_predictions
-UNION ALL SELECT 'local_experiences', count(*) FROM local_experiences
-UNION ALL SELECT 'sustainability_scores', count(*) FROM sustainability_scores
-UNION ALL SELECT 'sentiment_timeline', count(*) FROM sentiment_timeline
-UNION ALL SELECT 'alerts', count(*) FROM alerts
 ORDER BY table_name;
 "

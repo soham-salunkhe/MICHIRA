@@ -207,9 +207,9 @@ export const DestinationPage: React.FC = () => {
                   <AlertTriangle className="w-4 h-4 text-rose-400" />
                 </div>
                 <div className="mt-4">
-                  <p className="text-lg font-bold text-white">{problems[0]?.name || 'Parking Unavailability'}</p>
+                  <p className="text-lg font-bold text-white">{problems[0]?.name || 'No sufficient data'}</p>
                   <p className="text-xs text-rose-400 font-semibold mt-1">
-                    {problems[0]?.mention_count} complaints (↑{problems[0]?.trend_pct}% this month)
+                    {problems[0]?.mention_count != null ? (problems[0].mention_count + ' mentions') : 'Insufficient data'}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-2 line-clamp-1 italic">
                     "{problems[0]?.representative_reviews[0]}"
@@ -223,12 +223,12 @@ export const DestinationPage: React.FC = () => {
                   <Flame className="w-4 h-4 text-saffron-400" />
                 </div>
                 <div className="mt-4">
-                  <p className="text-lg font-bold text-white">{emergingAttractions[0]?.attraction_name || 'Divar Island'}</p>
+                  <p className="text-lg font-bold text-white">{emergingAttractions[0]?.attraction_name || 'No sufficient data'}</p>
                   <p className="text-xs text-saffron-400 font-semibold mt-1">
-                    +{emergingAttractions[0]?.mention_growth_pct}% mention velocity
+                    {emergingAttractions[0]?.mention_growth_pct != null ? ('+' + emergingAttractions[0].mention_growth_pct + '% mention velocity') : 'Emerging signal'}
                   </p>
                   <p className="text-[11px] text-emerald-400 mt-2">
-                    {emergingAttractions[0]?.positive_sentiment_pct}% positive traveler satisfaction
+                    {emergingAttractions[0]?.positive_sentiment_pct != null ? (emergingAttractions[0].positive_sentiment_pct + '% positive mentions') : 'Insufficient data'}
                   </p>
                 </div>
               </div>
