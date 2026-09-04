@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import axios from 'axios';
-import { analyzeReviewWithGemini } from '../services/geminiReviewService.js';
+import { analyzeReviewWithAI } from '../services/aiService.js';
 
 export const touristReviewRouter = Router();
 
@@ -130,12 +130,13 @@ async function fetchPlaceReviews(placeId: string, dataId?: string, dataCid?: str
         engine: 'google_maps_reviews',
         api_key: SERPAPI_KEY,
         hl: 'en',
-        sort_by: 'newestFirst', // Get recent reviews
+        sort_by: 'most_relevant', // Changed from 'newestFirst' to get reviews with better content
       };
       
       // Set the appropriate ID parameter
       params[name] = value;
       
+      // First page - get initial 8 reviews
       const response = await axios.get(SERPAPI_BASE_URL, {
         params,
         timeout: 20000,
@@ -143,11 +144,53 @@ async function fetchPlaceReviews(placeId: string, dataId?: string, dataCid?: str
 
       console.log(`[SerpAPI Reviews] Response status with ${name}:`, response.status);
 
-      const reviews = response.data?.reviews;
+      let allReviews = response.data?.reviews || [];
+      const nextPageToken = response.data?.serpapi_pagination?.next_page_token;
       
-      if (reviews && Array.isArray(reviews) && reviews.length > 0) {
-        console.log(`[SerpAPI Reviews] Success! Found ${reviews.length} reviews using ${name}`);
-        return reviews;
+      // If we have a next page token and need more reviews with text, fetch page 2
+      if (nextPageToken && allReviews.length > 0) {
+        const reviewsWithText = allReviews.filter(r => r.snippet && r.snippet.trim().length >= 5);
+        
+        console.log(`[SerpAPI Reviews] Page 1: Found ${allReviews.length} reviews, ${reviewsWithText.length} with text`);
+        
+        // If less than 5 reviews have text, fetch page 2
+        if (reviewsWithText.length < 5) {
+          try {
+            console.log(`[SerpAPI Reviews] Fetching page 2 to get more text-based reviews...`);
+            const page2Params = {
+              ...params,
+              next_page_token: nextPageToken,
+            };
+            const page2Response = await axios.get(SERPAPI_BASE_URL, {
+              params: page2Params,
+              timeout: 20000,
+            });
+            const page2Reviews = page2Response.data?.reviews || [];
+            console.log(`[SerpAPI Reviews] Page 2: Found ${page2Reviews.length} additional reviews`);
+            allReviews = [...allReviews, ...page2Reviews];
+          } catch (page2Error) {
+            console.log(`[SerpAPI Reviews] Could not fetch page 2:`, page2Error);
+            // Continue with page 1 reviews only
+          }
+        }
+      }
+      
+      if (allReviews.length > 0) {
+        // Filter reviews that have actual text (snippet exists and has meaningful content)
+        const reviewsWithText = allReviews.filter(r => r.snippet && r.snippet.trim().length >= 5);
+        
+        console.log(`[SerpAPI Reviews] Total: ${allReviews.length} reviews, ${reviewsWithText.length} have text content`);
+        
+        // Return up to 10 reviews with text, or all reviews if filtering leaves us with too few
+        if (reviewsWithText.length >= 3) {
+          const selectedReviews = reviewsWithText.slice(0, 10);
+          console.log(`[SerpAPI Reviews] Success! Returning ${selectedReviews.length} reviews with text using ${name}`);
+          return selectedReviews;
+        } else {
+          // Not enough reviews with text, return all and let downstream handle it
+          console.log(`[SerpAPI Reviews] Warning: Only ${reviewsWithText.length} reviews have text, returning all ${allReviews.length} reviews`);
+          return allReviews;
+        }
       } else {
         console.log(`[SerpAPI Reviews] No reviews returned with ${name}, trying next...`);
       }
@@ -170,9 +213,11 @@ async function analyzeReview(
   publishedDate: string | null
 ): Promise<AnalyzedReview | null> {
   try {
-    const analysis = await analyzeReviewWithGemini(reviewText, rating);
+    // Use the optimized AI service with fast fallbacks
+    const analysis = await analyzeReviewWithAI(reviewText, rating);
 
-    if (!analysis.is_valid_tourist_review) {
+    if (!analysis || !analysis.is_valid_tourist_review) {
+      console.log('[Review Analysis] Skipped invalid review:', reviewText.substring(0, 50));
       return null; // Skip invalid reviews
     }
 
@@ -187,20 +232,20 @@ async function analyzeReview(
     return {
       reviewText,
       language: analysis.language_code,
-      sentiment: analysis.overall_sentiment,
+      sentiment: analysis.sentiment,
       sentimentScore: analysis.sentiment_score,
       rating,
       publishedDate,
       positiveAspects,
       negativeAspects,
-      problems: analysis.problems.map((p) => ({
-        problem: p.problem,
-        aspect: p.aspect,
+      problems: analysis.detected_problems.map((p) => ({
+        problem: p.problem_name,
+        aspect: p.category,
         severity: p.severity,
       })),
     };
   } catch (error) {
-    console.error('[Review Analysis Error]', error);
+    console.error('[Review Analysis Error] Failed to analyze review:', reviewText.substring(0, 50), error);
     return null;
   }
 }
@@ -272,9 +317,24 @@ async function generateSummary(
   negativeThemes: AspectTheme[],
   sentimentBreakdown: SentimentBreakdown & { overallLabel: string }
 ): Promise<string> {
+  // If no valid Gemini key or insufficient reviews, return template-based summary
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || analyzedReviews.length === 0) {
-    return 'Insufficient review data to generate insights.';
+  const hasValidGeminiKey = apiKey && apiKey.startsWith('AIzaSy') && apiKey.length > 30;
+  
+  if (!hasValidGeminiKey || analyzedReviews.length === 0) {
+    console.log('[AI Summary] No valid Gemini key or no reviews, using template');
+    
+    if (analyzedReviews.length === 0) {
+      return 'Insufficient review data to generate insights.';
+    }
+    
+    // Template-based summary
+    const posCount = sentimentBreakdown.positive;
+    const negCount = sentimentBreakdown.negative;
+    const topPositive = positiveThemes[0]?.name || 'the experience';
+    const topNegative = negativeThemes[0]?.name || 'minor concerns';
+    
+    return `Based on ${analyzedReviews.length} tourist reviews, ${placeName} receives ${sentimentBreakdown.overallLabel.toLowerCase()} feedback. Visitors particularly appreciate ${topPositive}, though some mention ${topNegative}. Overall, ${posCount} out of ${analyzedReviews.length} reviews express positive sentiment.`;
   }
 
   try {
@@ -282,7 +342,7 @@ async function generateSummary(
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-      generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 300 },
     });
 
     const prompt = `You are generating a tourism summary based ONLY on the analyzed review data provided below. Do NOT use external knowledge about ${placeName}. Do NOT invent statistics or themes that are not present in the data.
@@ -298,13 +358,22 @@ ${positiveThemes.slice(0, 3).map((t) => `- ${t.name} (mentioned ${t.mentions} ti
 Top Concerns (from actual reviews):
 ${negativeThemes.slice(0, 3).map((t) => `- ${t.name} (mentioned ${t.mentions} times)`).join('\n')}
 
-Generate a concise 2-3 sentence summary that ONLY reflects the data above. Do not add external facts about ${placeName}.`;
+Generate a complete 2-3 sentence summary that ONLY reflects the data above. Do not add external facts about ${placeName}. Make sure to finish all sentences properly.`;
 
     const result = await model.generateContent(prompt);
-    return result.response.text().trim();
+    const summary = result.response.text().trim();
+    
+    console.log('[AI Summary] Generated summary length:', summary.length);
+    
+    return summary;
   } catch (error) {
     console.error('[AI Summary Generation Error]', error);
-    return 'Unable to generate AI summary at this time.';
+    
+    // Fallback to template-based summary
+    const topPositive = positiveThemes[0]?.name || 'the experience';
+    const topNegative = negativeThemes[0]?.name || 'minor concerns';
+    
+    return `Based on ${analyzedReviews.length} tourist reviews, ${placeName} receives ${sentimentBreakdown.overallLabel.toLowerCase()} feedback. Visitors particularly appreciate ${topPositive}, though some mention ${topNegative}.`;
   }
 }
 
@@ -372,27 +441,58 @@ touristReviewRouter.post('/analyze', async (req, res) => {
       });
     }
 
-    // Step 3: Analyze each review
+    // Step 3: Analyze reviews in parallel for faster processing
     const analyzedReviews: AnalyzedReview[] = [];
 
-    for (const review of reviews) {
+    console.log(`[Tourist Review Analysis] Starting parallel analysis of ${reviews.length} reviews...`);
+    const startTime = Date.now();
+
+    // Process reviews in parallel using Promise.all
+    const analysisPromises = reviews.map(async (review, index) => {
       const reviewText = review.snippet;
 
-      if (!reviewText || reviewText.trim().length < 10) {
-        continue; // Skip reviews with insufficient text
+      // Log what we received
+      console.log(`[Tourist Review Analysis] Review ${index + 1} raw data:`, {
+        hasSnippet: !!reviewText,
+        snippetLength: reviewText?.length || 0,
+        snippet: reviewText?.substring(0, 100),
+        rating: review.rating,
+        date: review.date
+      });
+
+      if (!reviewText || reviewText.trim().length < 5) {
+        console.log(`[Tourist Review Analysis] Skipped review ${index + 1}: insufficient text (min 5 chars required)`);
+        return null; // Skip reviews with insufficient text
       }
 
-      const analyzed = await analyzeReview(
-        reviewText,
-        review.rating || 0,
-        'en', // SerpAPI doesn't provide language code directly
-        review.date || null
-      );
-
-      if (analyzed) {
-        analyzedReviews.push(analyzed);
+      try {
+        console.log(`[Tourist Review Analysis] Analyzing review ${index + 1}/${reviews.length}: "${reviewText.substring(0, 60)}..."`);
+        const analyzed = await analyzeReview(
+          reviewText,
+          review.rating || 0,
+          'en', // SerpAPI doesn't provide language code directly
+          review.date || null
+        );
+        if (analyzed) {
+          console.log(`[Tourist Review Analysis] ✓ Review ${index + 1} analyzed successfully - Sentiment: ${analyzed.sentiment}`);
+        } else {
+          console.log(`[Tourist Review Analysis] ✗ Review ${index + 1} returned null (invalid or failed)`);
+        }
+        return analyzed;
+      } catch (err) {
+        console.error(`[Tourist Review Analysis] ✗ Error analyzing review ${index + 1}:`, err);
+        return null;
       }
-    }
+    });
+
+    // Wait for all reviews to be analyzed
+    const results = await Promise.all(analysisPromises);
+    
+    // Filter out null results
+    analyzedReviews.push(...results.filter((r): r is AnalyzedReview => r !== null));
+
+    const analysisTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`[Tourist Review Analysis] ✅ Analyzed ${analyzedReviews.length} reviews in ${analysisTime}s`);
 
     if (analyzedReviews.length === 0) {
       return res.status(200).json({

@@ -50,10 +50,12 @@ export const TouristReviewAnalysisPage: React.FC = () => {
     setLoadingState('searching');
 
     try {
-      // Simulate loading phases for better UX
-      setTimeout(() => setLoadingState('fetching'), 800);
-      setTimeout(() => setLoadingState('analyzing'), 2000);
-      setTimeout(() => setLoadingState('generating'), 4000);
+      // Create timer references for loading phases
+      const fetchTimer = setTimeout(() => setLoadingState('fetching'), 800);
+      const analyzeTimer = setTimeout(() => setLoadingState('analyzing'), 2000);
+      const generateTimer = setTimeout(() => setLoadingState('generating'), 4000);
+
+      console.log('[Tourist Review Analysis] Sending request for:', placeName);
 
       const response = await fetch(`${API_URL}/api/tourist-review-analysis/analyze`, {
         method: 'POST',
@@ -63,16 +65,33 @@ export const TouristReviewAnalysisPage: React.FC = () => {
         body: JSON.stringify({ placeName: placeName.trim() }),
       });
 
-      const data = await response.json();
+      // Clear all timers immediately
+      clearTimeout(fetchTimer);
+      clearTimeout(analyzeTimer);
+      clearTimeout(generateTimer);
 
-      if (!response.ok || !data.success) {
+      console.log('[Tourist Review Analysis] Response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch' }));
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[Tourist Review Analysis] Received data:', { 
+        success: data.success, 
+        reviewsAnalyzed: data.reviewsAnalyzed 
+      });
+
+      if (!data.success) {
         throw new Error(data.message || 'Unable to analyze reviews');
       }
 
       setResult(data);
       setLoadingState('idle');
+      console.log('[Tourist Review Analysis] ✅ Results loaded successfully');
     } catch (err: any) {
-      console.error('Analysis error:', err);
+      console.error('[Tourist Review Analysis] Error:', err);
       setError(err.message || 'Unable to analyze reviews. Please try again.');
       setLoadingState('idle');
     }

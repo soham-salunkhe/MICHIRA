@@ -159,7 +159,7 @@ export const Header: React.FC = () => {
             </button>
 
             <Link
-              to="/planner"
+              to="/ai-tourism-planner"
               className="btn-gold"
               style={{ textDecoration: 'none' }}
             >

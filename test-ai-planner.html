@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test AI Planner API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0B0D0D;
+            color: #F3EFE6;
+        }
+        button {
+            background: #D4AF37;
+            color: #0B0D0D;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #B8941F;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 15px;
+            background: #1E2120;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 12px;
+        }
+        .loading { color: #D4AF37; }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>AI Tourism Planner - API Test</h1>
+    
+    <div>
+        <button onclick="testAPI('Kedarnath')">Test Kedarnath</button>
+        <button onclick="testAPI('Hampi')">Test Hampi</button>
+        <button onclick="testAPI('Gateway of India Mumbai')">Test Gateway of India</button>
+    </div>
+
+    <div id="status">Click a button to test the API...</div>
+
+    <script>
+        const API_URL = 'http://localhost:5001';
+
+        async function testAPI(placeName) {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = `<div class="loading">🔄 Testing AI Planner for: ${placeName}...</div>`;
+
+            try {
+                const startTime = Date.now();
+                
+                const response = await fetch(`${API_URL}/api/ai-planner/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        placeName: placeName
+                    }),
+                });
+
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    statusEl.innerHTML = `
+                        <div class="success">✅ Success! (${duration}s)</div>
+                        <h3>Place: ${data.place?.name}</h3>
+                        <p><strong>Reviews Analyzed:</strong> ${data.reviewData?.reviewsAnalyzed}</p>
+                        <p><strong>Overall Sentiment:</strong> ${data.reviewData?.overallSentiment}</p>
+                        <p><strong>Visit Plan:</strong> ${data.plan?.visitPlan}</p>
+                        <p><strong>Best Experiences:</strong></p>
+                        <ul>${data.plan?.bestExperiences?.map(e => `<li>${e}</li>`).join('') || 'None'}</ul>
+                        <p><strong>Plan Smarter:</strong></p>
+                        <ul>${data.plan?.planSmarter?.map(t => `<li>${t}</li>`).join('') || 'None'}</ul>
+                        <details>
+                            <summary>View Full Response</summary>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </details>
+                    `;
+                } else {
+                    statusEl.innerHTML = `
+                        <div class="error">❌ API returned success=false (${duration}s)</div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                statusEl.innerHTML = `
+                    <div class="error">❌ Error: ${error.message}</div>
+                    <p>Make sure backend is running on http://localhost:5001</p>
+                    <pre>${error.stack}</pre>
+                `;
+            }
+        }
+
+        // Test on page load
+        console.log('Test page loaded. Backend should be at:', API_URL);
+    </script>
+</body>
+</html>

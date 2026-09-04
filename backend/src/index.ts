@@ -14,6 +14,7 @@ import { sustainabilityRouter } from './routes/sustainabilityRoutes.js';
 import { adminRouter } from './routes/adminRoutes.js';
 import { guideRouter } from './routes/guideRoutes.js';
 import { touristReviewRouter } from './routes/touristReviewRoutes.js';
+import { aiPlannerRouter } from './routes/aiPlannerRoutes.js';
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/api/sustainability', sustainabilityRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/guide', guideRouter);
 app.use('/api/tourist-review-analysis', touristReviewRouter);
+app.use('/api/ai-planner', aiPlannerRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({

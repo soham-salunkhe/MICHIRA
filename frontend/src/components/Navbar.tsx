@@ -54,6 +54,7 @@ export const Navbar: React.FC = () => {
     { name: 'Journeys',    path: '/planner'       },
     { name: 'Insights',    path: '/reviews'       },
     { name: 'AI Analysis', path: '/tourist-review-analysis' },
+    { name: 'AI Planner',  path: '/ai-tourism-planner' },
     { name: 'Experiences', path: '/experiences'   },
     { name: 'Heritage',    path: '/intelligence'  },
   ];
@@ -161,7 +162,7 @@ export const Navbar: React.FC = () => {
           )}
 
           {/* Plan with AI CTA */}
-          <Link to="/planner" className="btn-gold">
+          <Link to="/ai-tourism-planner" className="btn-gold">
             Plan with AI ✦
           </Link>
         </div>

@@ -187,7 +187,7 @@ export const LandingPage = () => {
                 </svg>
               </div>
             )}
-            <button className="btn-gold" onClick={() => guard('/planner')}>Plan with AI ✦</button>
+            <button className="btn-gold" onClick={() => guard('/ai-tourism-planner')}>Plan with AI ✦</button>
           </div>
         </nav>
       </header>

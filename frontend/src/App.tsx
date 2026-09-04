@@ -19,6 +19,7 @@ import { ExperiencesPage } from './pages/ExperiencesPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { IntelligenceDashboard } from './pages/IntelligenceDashboard';
 import { TouristReviewAnalysisPage } from './pages/TouristReviewAnalysisPage';
+import { AITourismPlannerPage } from './pages/AITourismPlannerPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -61,6 +62,7 @@ function AppRoutes() {
       <Route path="/reviews" element={<ReviewIntelligencePage />} />
       <Route path="/intelligence" element={<IntelligenceDashboard />} />
       <Route path="/tourist-review-analysis" element={<TouristReviewAnalysisPage />} />
+      <Route path="/ai-tourism-planner" element={<AITourismPlannerPage />} />
       <Route path="/planner" element={<PlannerPage />} />
       <Route path="/assistant" element={<AssistantPage />} />
       <Route path="/experiences" element={<ExperiencesPage />} />
