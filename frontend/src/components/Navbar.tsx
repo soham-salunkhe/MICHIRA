@@ -53,6 +53,7 @@ export const Navbar: React.FC = () => {
     { name: 'Wonders',     path: '/explore'      },
     { name: 'Journeys',    path: '/planner'       },
     { name: 'Insights',    path: '/reviews'       },
+    { name: 'AI Analysis', path: '/tourist-review-analysis' },
     { name: 'Experiences', path: '/experiences'   },
     { name: 'Heritage',    path: '/intelligence'  },
   ];

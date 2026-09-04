@@ -13,6 +13,7 @@ import { experienceRouter } from './routes/experienceRoutes.js';
 import { sustainabilityRouter } from './routes/sustainabilityRoutes.js';
 import { adminRouter } from './routes/adminRoutes.js';
 import { guideRouter } from './routes/guideRoutes.js';
+import { touristReviewRouter } from './routes/touristReviewRoutes.js';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use('/api/experiences', experienceRouter);
 app.use('/api/sustainability', sustainabilityRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/guide', guideRouter);
+app.use('/api/tourist-review-analysis', touristReviewRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({
